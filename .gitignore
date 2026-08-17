@@ -1,0 +1,13 @@
+# Local dependencies and credentials
+.env
+.env.*
+certs/
+secrets/
+
+# Go
+/bin/
+*.test
+coverage.out
+
+# Local evidence
+.evidence/

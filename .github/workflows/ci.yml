@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main, 'feature/**', 'hotfix/**']
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+    inputs:
+      publish_image:
+        description: Publish immutable source-SHA image from develop
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  go-ci:
+    name: Lint, tests, coverage
+    uses: pploc/gym-infra/.github/workflows/go-ci.yml@ace7a285cc14b3e1121cac17bcfa9ea0ce5d1102
+    with:
+      service_path: .
+      go_version: '1.26.6'
+      test_command: GOWORK=off go test -race ./...
+    secrets: inherit
+
+  docker:
+    name: Build & push image
+    needs: go-ci
+    if: >
+      github.event_name == 'workflow_dispatch' &&
+      inputs.publish_image &&
+      github.ref == 'refs/heads/develop'
+    uses: pploc/gym-infra/.github/workflows/docker-build.yml@ace7a285cc14b3e1121cac17bcfa9ea0ce5d1102
+    with:
+      service_name: ms-gym-checkin
+      context: .
+      push: true
+      source_sha_only: true
+      max_tags: 20
+    permissions:
+      contents: read
+      packages: write
