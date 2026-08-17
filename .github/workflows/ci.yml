@@ -46,6 +46,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '26'
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: 1.72.0
       - name: Configure private Go modules
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -67,7 +70,11 @@ jobs:
           printf 'VAULT_TOKEN=%s\n' "$VAULT_DEV_ROOT_TOKEN_ID" >> "$GITHUB_ENV"
       - name: Seed disposable Registry fixtures
         working-directory: gym-proto
-        run: ./gradlew seedConfluentSchemas -PschemaRegistryUrl=http://127.0.0.1:8081 --no-daemon
+        run: |
+          set -euo pipefail
+          sed -i 's/\r$//' gradlew
+          buf generate
+          ./gradlew seedConfluentSchemas -PschemaRegistryUrl=http://127.0.0.1:8081 --no-daemon
       - name: Integration tests
         env:
           DATABASE_URL: postgres://yugabyte@127.0.0.1:5434/checkin_db?sslmode=disable
