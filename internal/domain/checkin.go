@@ -27,7 +27,7 @@ type RootKey struct {
 	GymID              string
 	Version            uint64
 	Ciphertext         string
-	VaultKeyReference  string
+	KeyReference       string
 	Status             RootKeyStatus
 	ActivatedAt        time.Time
 	AcceptanceDeadline time.Time

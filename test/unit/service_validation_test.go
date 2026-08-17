@@ -21,7 +21,7 @@ func TestGivenReusedIdempotencyKeyWithDifferentPayload_WhenScanning_ThenReturnsC
 		t.Fatal("sign idempotency test QR failed")
 	}
 	store := &memoryStore{key: &domain.RootKey{GymID: gymID, Version: 1, Ciphertext: string(key), Status: domain.RootKeyCurrent}}
-	service := usecase.NewService(store, member{}, plans{}, vault{}, fixedClock{now}, &ids{})
+	service := usecase.NewService(store, member{}, plans{}, protector{}, fixedClock{now}, &ids{})
 	if _, err := service.Scan(context.Background(), "user", gymID, payload, "idempotency"); err != nil {
 		t.Fatal("create initial idempotency check-in failed")
 	}
@@ -35,7 +35,7 @@ func TestGivenReusedIdempotencyKeyWithDifferentPayload_WhenScanning_ThenReturnsC
 
 func TestGivenInvalidDate_WhenCountingDailyCheckIns_ThenReturnsValidationError(t *testing.T) {
 	// Given
-	service := usecase.NewService(&memoryStore{}, member{}, plans{}, vault{}, fixedClock{}, &ids{})
+	service := usecase.NewService(&memoryStore{}, member{}, plans{}, protector{}, fixedClock{}, &ids{})
 
 	// When
 	_, err := service.DailyCount(context.Background(), gymID, "2026-99-99")
@@ -46,7 +46,7 @@ func TestGivenInvalidDate_WhenCountingDailyCheckIns_ThenReturnsValidationError(t
 
 func TestGivenNegativePage_WhenListingHistory_ThenReturnsValidationError(t *testing.T) {
 	// Given
-	service := usecase.NewService(&memoryStore{}, member{}, plans{}, vault{}, fixedClock{}, &ids{})
+	service := usecase.NewService(&memoryStore{}, member{}, plans{}, protector{}, fixedClock{}, &ids{})
 
 	// When
 	_, _, err := service.MyHistory(context.Background(), "user", -1, 50)
@@ -64,7 +64,7 @@ func TestGivenPreviousKeyWithinOverlap_WhenScanning_ThenAcceptsQR(t *testing.T) 
 		t.Fatal("sign previous-key test QR failed")
 	}
 	store := &memoryStore{key: &domain.RootKey{GymID: gymID, Version: 1, Ciphertext: string(key), Status: domain.RootKeyPrevious, AcceptanceDeadline: now.Add(time.Second)}}
-	service := usecase.NewService(store, member{}, plans{}, vault{}, fixedClock{now}, &ids{})
+	service := usecase.NewService(store, member{}, plans{}, protector{}, fixedClock{now}, &ids{})
 
 	// When
 	_, err = service.Scan(context.Background(), "user", gymID, payload, "idempotency")
@@ -84,7 +84,7 @@ func TestGivenRetiredKey_WhenScanning_ThenRejectsQR(t *testing.T) {
 		t.Fatal("sign retired-key test QR failed")
 	}
 	store := &memoryStore{key: &domain.RootKey{GymID: gymID, Version: 1, Ciphertext: string(key), Status: domain.RootKeyRetired}}
-	service := usecase.NewService(store, member{}, plans{}, vault{}, fixedClock{now}, &ids{})
+	service := usecase.NewService(store, member{}, plans{}, protector{}, fixedClock{now}, &ids{})
 
 	// When
 	_, err = service.Scan(context.Background(), "user", gymID, payload, "idempotency")

@@ -63,11 +63,11 @@ jobs:
           EOF
           printf 'GOPRIVATE=%s\nGIT_CONFIG_GLOBAL=%s\n' "$GOPRIVATE" "$GIT_CONFIG_GLOBAL" >> "$GITHUB_ENV"
       - name: Start dependencies
-        run: |
-          VAULT_DEV_ROOT_TOKEN_ID="$(openssl rand -hex 32)"
-          export VAULT_DEV_ROOT_TOKEN_ID
-          make start-env
-          printf 'VAULT_TOKEN=%s\n' "$VAULT_DEV_ROOT_TOKEN_ID" >> "$GITHUB_ENV"
+        run: make start-env
+      - name: Apply migrations
+        env:
+          DATABASE_URL: postgres://yugabyte@127.0.0.1:5434/checkin_db?sslmode=disable
+        run: make migrate
       - name: Seed disposable Registry fixtures
         working-directory: gym-proto
         run: |
@@ -78,8 +78,11 @@ jobs:
       - name: Integration tests
         env:
           DATABASE_URL: postgres://yugabyte@127.0.0.1:5434/checkin_db?sslmode=disable
-          VAULT_ADDR: http://127.0.0.1:8200
-          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_REGION: us-east-1
+          KMS_KEY_ID: alias/checkin-root
+          KMS_ENDPOINT_URL: http://127.0.0.1:4566
           KAFKA_BROKERS: 127.0.0.1:9092
           SCHEMA_REGISTRY_URL: http://127.0.0.1:8081
           UNSEEDED_SCHEMA_REGISTRY_URL: http://127.0.0.1:8082

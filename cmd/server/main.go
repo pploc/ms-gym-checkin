@@ -27,9 +27,9 @@ import (
 
 	grpcadapter "github.com/pploc/ms-gym-checkin/internal/adapter/grpc"
 	kafkaadapter "github.com/pploc/ms-gym-checkin/internal/adapter/kafka"
+	kmsadapter "github.com/pploc/ms-gym-checkin/internal/adapter/kms"
 	memberadapter "github.com/pploc/ms-gym-checkin/internal/adapter/member"
 	plansadapter "github.com/pploc/ms-gym-checkin/internal/adapter/plans"
-	vaultadapter "github.com/pploc/ms-gym-checkin/internal/adapter/vault"
 	yugabyteadapter "github.com/pploc/ms-gym-checkin/internal/adapter/yugabyte"
 	"github.com/pploc/ms-gym-checkin/internal/config"
 	"github.com/pploc/ms-gym-checkin/internal/usecase"
@@ -62,11 +62,11 @@ func run() error {
 		return fmt.Errorf("plans client: %w", err)
 	}
 	defer plans.Close()
-	vault, err := vaultadapter.New(cfg.VaultAddress, cfg.VaultAuth, cfg.VaultTransitMount, cfg.VaultKeyReference)
+	protector, err := kmsadapter.New(context.Background(), cfg.AWSRegion, cfg.KMSKeyID, cfg.KMSEndpointURL)
 	if err != nil {
-		return fmt.Errorf("vault: %w", err)
+		return fmt.Errorf("KMS: %w", err)
 	}
-	service := usecase.NewService(store, member, plans, vault, usecase.SystemClock{}, usecase.UUIDGenerator{})
+	service := usecase.NewService(store, member, plans, protector, usecase.SystemClock{}, usecase.UUIDGenerator{})
 	registry, err := middleware.NewRegistry(grpcadapter.MethodRules()...)
 	if err != nil {
 		return fmt.Errorf("method registry: %w", err)

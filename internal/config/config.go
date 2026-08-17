@@ -16,23 +16,15 @@ type MTLSClient struct {
 	Deadline   time.Duration
 }
 
-type VaultAuth struct {
-	Token             string
-	KubernetesRole    string
-	KubernetesJWTFile string
-	KubernetesMount   string
-}
-
 type Config struct {
 	GRPCAddr          string
 	HTTPAddr          string
 	DatabaseURL       string
 	Member            MTLSClient
 	Plans             MTLSClient
-	VaultAddress      string
-	VaultAuth         VaultAuth
-	VaultTransitMount string
-	VaultKeyReference string
+	AWSRegion         string
+	KMSKeyID          string
+	KMSEndpointURL    string
 	KafkaBrokers      string
 	SchemaRegistryURL string
 	ServiceName       string
@@ -71,20 +63,14 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	cfg := Config{
-		GRPCAddr:     env("GRPC_ADDR", ":50051"),
-		HTTPAddr:     env("HTTP_ADDR", ":8080"),
-		DatabaseURL:  os.Getenv("DATABASE_URL"),
-		Member:       member,
-		Plans:        plans,
-		VaultAddress: os.Getenv("VAULT_ADDR"),
-		VaultAuth: VaultAuth{
-			Token:             os.Getenv("VAULT_TOKEN"),
-			KubernetesRole:    os.Getenv("VAULT_KUBERNETES_AUTH_ROLE"),
-			KubernetesJWTFile: env("VAULT_KUBERNETES_JWT_FILE", "/var/run/secrets/vault/token"),
-			KubernetesMount:   env("VAULT_KUBERNETES_AUTH_MOUNT", "kubernetes"),
-		},
-		VaultTransitMount: env("VAULT_TRANSIT_MOUNT", "transit"),
-		VaultKeyReference: os.Getenv("VAULT_KEY_REFERENCE"),
+		GRPCAddr:          env("GRPC_ADDR", ":50051"),
+		HTTPAddr:          env("HTTP_ADDR", ":8080"),
+		DatabaseURL:       os.Getenv("DATABASE_URL"),
+		Member:            member,
+		Plans:             plans,
+		AWSRegion:         os.Getenv("AWS_REGION"),
+		KMSKeyID:          os.Getenv("KMS_KEY_ID"),
+		KMSEndpointURL:    os.Getenv("KMS_ENDPOINT_URL"),
 		KafkaBrokers:      os.Getenv("KAFKA_BROKERS"),
 		SchemaRegistryURL: os.Getenv("SCHEMA_REGISTRY_URL"),
 		ServiceName:       env("SERVICE_NAME", "ms-gym-checkin"),
@@ -99,11 +85,8 @@ func Load() (Config, error) {
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
 	}
-	if cfg.VaultAddress == "" || cfg.VaultKeyReference == "" {
-		return Config{}, fmt.Errorf("VAULT_ADDR and VAULT_KEY_REFERENCE are required")
-	}
-	if (cfg.VaultAuth.Token == "") == (cfg.VaultAuth.KubernetesRole == "") {
-		return Config{}, fmt.Errorf("exactly one of VAULT_TOKEN or VAULT_KUBERNETES_AUTH_ROLE is required")
+	if cfg.AWSRegion == "" || cfg.KMSKeyID == "" {
+		return Config{}, fmt.Errorf("AWS_REGION and KMS_KEY_ID are required")
 	}
 	if err := validateClient("MEMBER", cfg.Member); err != nil {
 		return Config{}, err

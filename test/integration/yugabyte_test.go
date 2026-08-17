@@ -257,22 +257,27 @@ func openYugabyte(t *testing.T) (*yugabyte.Store, string) {
 		t.Fatal("open Yugabyte failed")
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	migrationPath := filepath.Join("..", "..", "migrations", "001_init.sql")
-	migration, err := os.ReadFile(migrationPath)
+	migrationPaths, err := filepath.Glob(filepath.Join("..", "..", "migrations", "*.sql"))
 	if err != nil {
-		t.Fatal("read migration failed")
+		t.Fatal("find migrations failed")
 	}
-	if err := yugabyte.Migrate(context.Background(), store.DB(), string(migration)); err != nil {
-		t.Fatal("migration failed")
+	for _, migrationPath := range migrationPaths {
+		migration, err := os.ReadFile(migrationPath)
+		if err != nil {
+			t.Fatal("read migration failed")
+		}
+		if err := yugabyte.Migrate(context.Background(), store.DB(), string(migration)); err != nil {
+			t.Fatal("migration failed")
+		}
 	}
 	t.Cleanup(func() {
 		_, _ = store.DB().Exec(`DROP TABLE IF EXISTS outbox_events, check_ins, gym_qr_root_keys CASCADE`)
 	})
-	return store, string(migration)
+	return store, ""
 }
 
 func rootKey(ciphertext string, activatedAt time.Time) domain.RootKey {
-	return domain.RootKey{GymID: testGymID, Version: 1, Ciphertext: ciphertext, VaultKeyReference: "checkin-root", Status: domain.RootKeyCurrent, ActivatedAt: activatedAt}
+	return domain.RootKey{GymID: testGymID, Version: 1, Ciphertext: ciphertext, KeyReference: "kms-key", Status: domain.RootKeyCurrent, ActivatedAt: activatedAt}
 }
 
 func checkInRecord(id string, checkedInAt time.Time) domain.CheckInRecord {

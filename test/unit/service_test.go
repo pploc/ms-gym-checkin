@@ -77,18 +77,53 @@ func (plans) ValidateCheckInGym(_ context.Context, id string) (port.Gym, error) 
 func (plans) Ping(context.Context) error { return nil }
 func (plans) Close() error               { return nil }
 
-type vault struct{}
+type protector struct{}
 
-func (vault) KeyReference() string                                    { return "checkin-root" }
-func (vault) Encrypt(_ context.Context, value []byte) (string, error) { return string(value), nil }
-func (vault) Decrypt(_ context.Context, value string) ([]byte, error) { return []byte(value), nil }
-func (vault) Ping(context.Context) error                              { return nil }
+func (protector) KeyReference() string                                    { return "kms-key" }
+func (protector) Encrypt(_ context.Context, value []byte) (string, error) { return string(value), nil }
+func (protector) Decrypt(_ context.Context, _ string, value string) ([]byte, error) {
+	return []byte(value), nil
+}
+func (protector) Ping(context.Context) error { return nil }
+
+type recordingProtector struct{ keyReference string }
+
+func (p *recordingProtector) KeyReference() string { return "configured-kms-key" }
+func (p *recordingProtector) Encrypt(_ context.Context, value []byte) (string, error) {
+	return string(value), nil
+}
+func (p *recordingProtector) Decrypt(_ context.Context, keyReference, ciphertext string) ([]byte, error) {
+	p.keyReference = keyReference
+	return []byte(ciphertext), nil
+}
+func (p *recordingProtector) Ping(context.Context) error { return nil }
+
+func TestGivenPersistedKMSKeyReference_WhenScanning_ThenDecryptsWithPersistedReference(t *testing.T) {
+	// Given
+	now := time.Date(2026, 8, 17, 10, 0, 30, 0, time.UTC)
+	key := []byte("01234567890123456789012345678901")
+	payload, err := domain.SignQR(gymID, 1, now, key)
+	if err != nil {
+		t.Fatal("sign QR failed")
+	}
+	protector := &recordingProtector{}
+	store := &memoryStore{key: &domain.RootKey{GymID: gymID, Version: 1, Ciphertext: string(key), KeyReference: "arn:aws:kms:us-east-1:123456789012:key/retired-alias", Status: domain.RootKeyCurrent}}
+	service := usecase.NewService(store, member{}, plans{}, protector, fixedClock{now}, &ids{})
+
+	// When
+	_, err = service.Scan(context.Background(), "user", gymID, payload, "idempotency")
+
+	// Then
+	if err != nil || protector.keyReference != store.key.KeyReference {
+		t.Fatal("scan did not decrypt with persisted KMS key reference")
+	}
+}
 
 func TestGivenExactReplay_WhenScanning_ThenReturnsStoredRecord(t *testing.T) {
 	// Given
 	now := time.Date(2026, 8, 17, 10, 0, 30, 0, time.UTC)
 	store := &memoryStore{key: &domain.RootKey{GymID: gymID, Version: 1, Ciphertext: "01234567890123456789012345678901", Status: domain.RootKeyCurrent}}
-	service := usecase.NewService(store, member{}, plans{}, vault{}, fixedClock{now}, &ids{})
+	service := usecase.NewService(store, member{}, plans{}, protector{}, fixedClock{now}, &ids{})
 	payload, err := domain.SignQR(gymID, 1, now, []byte("01234567890123456789012345678901"))
 	if err != nil {
 		t.Fatal("sign test QR failed")

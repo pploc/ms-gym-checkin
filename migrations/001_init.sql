@@ -1,4 +1,4 @@
-CREATE TABLE gym_qr_root_keys (
+CREATE TABLE IF NOT EXISTS gym_qr_root_keys (
     gym_id TEXT NOT NULL,
     key_version BIGINT NOT NULL CHECK (key_version > 0),
     vault_ciphertext TEXT NOT NULL,
@@ -10,14 +10,14 @@ CREATE TABLE gym_qr_root_keys (
     PRIMARY KEY (gym_id, key_version)
 );
 
-CREATE UNIQUE INDEX gym_qr_root_keys_one_current
+CREATE UNIQUE INDEX IF NOT EXISTS gym_qr_root_keys_one_current
     ON gym_qr_root_keys (gym_id)
     WHERE status = 'CURRENT';
 
-CREATE INDEX gym_qr_root_keys_acceptable
+CREATE INDEX IF NOT EXISTS gym_qr_root_keys_acceptable
     ON gym_qr_root_keys (gym_id, status, acceptance_deadline);
 
-CREATE TABLE check_ins (
+CREATE TABLE IF NOT EXISTS check_ins (
     checkin_id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     member_id TEXT NOT NULL,
@@ -28,11 +28,11 @@ CREATE TABLE check_ins (
     UNIQUE (user_id, idempotency_key)
 );
 
-CREATE INDEX check_ins_user_history ON check_ins (user_id, checked_in_at DESC, checkin_id DESC);
-CREATE INDEX check_ins_member_history ON check_ins (member_id, checked_in_at DESC, checkin_id DESC);
-CREATE INDEX check_ins_daily_count ON check_ins (gym_id, checked_in_at);
+CREATE INDEX IF NOT EXISTS check_ins_user_history ON check_ins (user_id, checked_in_at DESC, checkin_id DESC);
+CREATE INDEX IF NOT EXISTS check_ins_member_history ON check_ins (member_id, checked_in_at DESC, checkin_id DESC);
+CREATE INDEX IF NOT EXISTS check_ins_daily_count ON check_ins (gym_id, checked_in_at);
 
-CREATE TABLE outbox_events (
+CREATE TABLE IF NOT EXISTS outbox_events (
     event_id TEXT PRIMARY KEY,
     topic TEXT NOT NULL,
     message_key TEXT NOT NULL,
@@ -45,4 +45,4 @@ CREATE TABLE outbox_events (
     published_at TIMESTAMPTZ
 );
 
-CREATE INDEX outbox_events_claimable ON outbox_events (status, available_at, created_at);
+CREATE INDEX IF NOT EXISTS outbox_events_claimable ON outbox_events (status, available_at, created_at);

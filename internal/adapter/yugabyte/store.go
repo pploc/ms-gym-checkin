@@ -139,11 +139,11 @@ func (s *Store) FindKey(ctx context.Context, gymID string, version uint64) (*dom
 	return s.key(ctx, `gym_id = $1 AND key_version = $2`, gymID, version)
 }
 func (s *Store) key(ctx context.Context, where string, values ...any) (*domain.RootKey, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT gym_id, key_version, vault_ciphertext, vault_key_reference, status, activated_at, acceptance_deadline, retired_at FROM gym_qr_root_keys WHERE `+where, values...)
+	row := s.db.QueryRowContext(ctx, `SELECT gym_id, key_version, key_ciphertext, key_reference, status, activated_at, acceptance_deadline, retired_at FROM gym_qr_root_keys WHERE `+where, values...)
 	var key domain.RootKey
 	var deadline sql.NullTime
 	var retired sql.NullTime
-	if err := row.Scan(&key.GymID, &key.Version, &key.Ciphertext, &key.VaultKeyReference, &key.Status, &key.ActivatedAt, &deadline, &retired); err != nil {
+	if err := row.Scan(&key.GymID, &key.Version, &key.Ciphertext, &key.KeyReference, &key.Status, &key.ActivatedAt, &deadline, &retired); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
@@ -160,7 +160,7 @@ func (s *Store) key(ctx context.Context, where string, values ...any) (*domain.R
 
 func (s *Store) CreateCurrentKey(ctx context.Context, key domain.RootKey) (domain.RootKey, error) {
 	for attempt := 0; attempt < 3; attempt++ {
-		result, err := s.db.ExecContext(ctx, `INSERT INTO gym_qr_root_keys (gym_id, key_version, vault_ciphertext, vault_key_reference, status, activated_at) VALUES ($1,$2,$3,$4,'CURRENT',$5) ON CONFLICT DO NOTHING`, key.GymID, key.Version, key.Ciphertext, key.VaultKeyReference, key.ActivatedAt)
+		result, err := s.db.ExecContext(ctx, `INSERT INTO gym_qr_root_keys (gym_id, key_version, key_ciphertext, key_reference, status, activated_at) VALUES ($1,$2,$3,$4,'CURRENT',$5) ON CONFLICT DO NOTHING`, key.GymID, key.Version, key.Ciphertext, key.KeyReference, key.ActivatedAt)
 		if err != nil {
 			if isRetryableTransaction(err) {
 				continue
@@ -231,7 +231,7 @@ func (s *Store) rotateKey(ctx context.Context, key domain.RootKey, deadline time
 	if updated != 1 {
 		return domain.RootKey{}, errors.New("current QR key changed during rotation")
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO gym_qr_root_keys (gym_id,key_version,vault_ciphertext,vault_key_reference,status,activated_at) VALUES ($1,$2,$3,$4,'CURRENT',$5)`, key.GymID, key.Version, key.Ciphertext, key.VaultKeyReference, key.ActivatedAt)
+	_, err = tx.ExecContext(ctx, `INSERT INTO gym_qr_root_keys (gym_id,key_version,key_ciphertext,key_reference,status,activated_at) VALUES ($1,$2,$3,$4,'CURRENT',$5)`, key.GymID, key.Version, key.Ciphertext, key.KeyReference, key.ActivatedAt)
 	if err != nil {
 		return domain.RootKey{}, err
 	}
@@ -242,12 +242,12 @@ func (s *Store) rotateKey(ctx context.Context, key domain.RootKey, deadline time
 }
 
 func currentKeyTx(ctx context.Context, tx *sql.Tx, gymID string, lock bool) (domain.RootKey, error) {
-	query := `SELECT gym_id,key_version,vault_ciphertext,vault_key_reference,status,activated_at FROM gym_qr_root_keys WHERE gym_id=$1 AND status='CURRENT'`
+	query := `SELECT gym_id,key_version,key_ciphertext,key_reference,status,activated_at FROM gym_qr_root_keys WHERE gym_id=$1 AND status='CURRENT'`
 	if lock {
 		query += ` FOR UPDATE`
 	}
 	var key domain.RootKey
-	err := tx.QueryRowContext(ctx, query, gymID).Scan(&key.GymID, &key.Version, &key.Ciphertext, &key.VaultKeyReference, &key.Status, &key.ActivatedAt)
+	err := tx.QueryRowContext(ctx, query, gymID).Scan(&key.GymID, &key.Version, &key.Ciphertext, &key.KeyReference, &key.Status, &key.ActivatedAt)
 	return key, err
 }
 

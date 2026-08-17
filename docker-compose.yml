@@ -3,22 +3,21 @@ services:
     image: yugabytedb/yugabyte:2.25.2.0-b359
     command: ["bin/yugabyted", "start", "--background=false"]
     ports: ["5434:5433"]
+    volumes:
+      - ./migrations:/migrations:ro
     healthcheck:
       test: ["CMD-SHELL", "ysqlsh -h \"$$(hostname)\" -c 'SELECT 1' >/dev/null 2>&1"]
       interval: 5s
       timeout: 5s
       retries: 30
 
-  vault:
-    image: hashicorp/vault:1.18
-    cap_add: [IPC_LOCK]
+  localstack:
+    image: localstack/localstack:3.8.1
     environment:
-      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN_ID:?run scripts/start-env.sh}
-      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
-    command: ["server", "-dev"]
-    ports: ["8200:8200"]
+      SERVICES: kms
+    ports: ["4566:4566"]
     healthcheck:
-      test: ["CMD-SHELL", "VAULT_ADDR=http://127.0.0.1:8200 vault status >/dev/null"]
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:4566/_localstack/health >/dev/null"]
       interval: 5s
       timeout: 5s
       retries: 30

@@ -22,7 +22,7 @@ build:
 
 migrate:
 	@test -n "$(DATABASE_URL)" || (echo "DATABASE_URL required" && exit 1)
-	psql "$(DATABASE_URL)" -f migrations/001_init.sql
+	@for migration in migrations/*.sql; do psql "$(DATABASE_URL)" -f "$$migration"; done
 
 start-env:
 	./scripts/start-env.sh

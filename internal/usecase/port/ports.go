@@ -47,10 +47,10 @@ type PlansClient interface {
 	Close() error
 }
 
-type Vault interface {
+type KeyProtector interface {
 	KeyReference() string
 	Encrypt(context.Context, []byte) (string, error)
-	Decrypt(context.Context, string) ([]byte, error)
+	Decrypt(context.Context, string, string) ([]byte, error)
 	Ping(context.Context) error
 }
 

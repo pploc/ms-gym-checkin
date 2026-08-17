@@ -24,17 +24,17 @@ const (
 )
 
 type Service struct {
-	store  port.Store
-	member port.MemberClient
-	plans  port.PlansClient
-	vault  port.Vault
-	clock  port.Clock
-	ids    port.IDGenerator
-	keys   *keyCache
+	store     port.Store
+	member    port.MemberClient
+	plans     port.PlansClient
+	protector port.KeyProtector
+	clock     port.Clock
+	ids       port.IDGenerator
+	keys      *keyCache
 }
 
-func NewService(store port.Store, member port.MemberClient, plans port.PlansClient, vault port.Vault, clock port.Clock, ids port.IDGenerator) *Service {
-	return &Service{store: store, member: member, plans: plans, vault: vault, clock: clock, ids: ids, keys: newKeyCache(128)}
+func NewService(store port.Store, member port.MemberClient, plans port.PlansClient, protector port.KeyProtector, clock port.Clock, ids port.IDGenerator) *Service {
+	return &Service{store: store, member: member, plans: plans, protector: protector, clock: clock, ids: ids, keys: newKeyCache(128)}
 }
 
 type DisplayPayload struct {
@@ -188,7 +188,7 @@ func (s *Service) Ready(ctx context.Context) error {
 	if err := s.store.Ping(ctx); err != nil {
 		return err
 	}
-	if err := s.vault.Ping(ctx); err != nil {
+	if err := s.protector.Ping(ctx); err != nil {
 		return err
 	}
 	if err := s.member.Ping(ctx); err != nil {
@@ -218,12 +218,12 @@ func (s *Service) newKey(ctx context.Context, gymID string, version uint64) (dom
 		return domain.RootKey{}, fmt.Errorf("generate QR key: %w", err)
 	}
 	defer clear(plain)
-	ciphertext, err := s.vault.Encrypt(ctx, plain)
+	ciphertext, err := s.protector.Encrypt(ctx, plain)
 	if err != nil {
 		return domain.RootKey{}, err
 	}
 	now := s.clock.Now().UTC()
-	return domain.RootKey{GymID: gymID, Version: version, Ciphertext: ciphertext, VaultKeyReference: s.vault.KeyReference(), Status: domain.RootKeyCurrent, ActivatedAt: now}, nil
+	return domain.RootKey{GymID: gymID, Version: version, Ciphertext: ciphertext, KeyReference: s.protector.KeyReference(), Status: domain.RootKeyCurrent, ActivatedAt: now}, nil
 }
 
 func (s *Service) key(ctx context.Context, key domain.RootKey) ([]byte, error) {
@@ -235,12 +235,12 @@ func (s *Service) key(ctx context.Context, key domain.RootKey) ([]byte, error) {
 	if cached, ok := s.keys.get(key.GymID, key.Version, s.clock.Now()); ok {
 		return cached, nil
 	}
-	plain, err := s.vault.Decrypt(ctx, key.Ciphertext)
+	plain, err := s.protector.Decrypt(ctx, key.KeyReference, key.Ciphertext)
 	if err != nil {
 		return nil, commonerrors.New(commonerrors.CategoryUnavailable, "VAULT_UNAVAILABLE", "key service is unavailable")
 	}
+	defer clear(plain)
 	if len(plain) != 32 {
-		clear(plain)
 		return nil, commonerrors.New(commonerrors.CategoryUnavailable, "VAULT_UNAVAILABLE", "key service is unavailable")
 	}
 	expires := key.AcceptanceDeadline

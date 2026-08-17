@@ -20,36 +20,34 @@ func TestGivenInvalidDuration_WhenLoadingConfig_ThenRejectsStartup(t *testing.T)
 	}
 }
 
-func TestGivenBothVaultAuthModes_WhenLoadingConfig_ThenRejectsStartup(t *testing.T) {
+func TestGivenMissingKMSKeyID_WhenLoadingConfig_ThenRejectsStartup(t *testing.T) {
 	// Given
 	setRequiredConfig(t)
-	t.Setenv("VAULT_TOKEN", "local")
-	t.Setenv("VAULT_KUBERNETES_AUTH_ROLE", "checkin")
+	t.Setenv("KMS_KEY_ID", "")
 
 	// When
 	_, err := config.Load()
 
 	// Then
 	if err == nil {
-		t.Fatal("expected mutually exclusive Vault auth error")
+		t.Fatal("expected missing KMS key ID error")
 	}
 }
 
-func TestGivenKubernetesVaultAuth_WhenLoadingConfig_ThenAcceptsProjectedIdentity(t *testing.T) {
+func TestGivenKMSConfiguration_WhenLoadingConfig_ThenLoadsEndpointAndKeepsReflectionDisabled(t *testing.T) {
 	// Given
 	setRequiredConfig(t)
-	t.Setenv("VAULT_TOKEN", "")
-	t.Setenv("VAULT_KUBERNETES_AUTH_ROLE", "checkin")
+	t.Setenv("KMS_ENDPOINT_URL", "http://localstack:4566")
 
 	// When
 	cfg, err := config.Load()
 
 	// Then
 	if err != nil {
-		t.Fatal("load Kubernetes Vault configuration failed")
+		t.Fatal("load KMS configuration failed")
 	}
-	if cfg.VaultAuth.KubernetesRole != "checkin" {
-		t.Fatal("Kubernetes Vault role was not loaded")
+	if cfg.KMSEndpointURL != "http://localstack:4566" {
+		t.Fatal("KMS endpoint was not loaded")
 	}
 	if cfg.GRPCReflection {
 		t.Fatal("gRPC reflection must default to disabled")
@@ -60,9 +58,8 @@ func setRequiredConfig(t *testing.T) {
 	t.Helper()
 	for key, value := range map[string]string{
 		"DATABASE_URL":             "postgres://localhost/checkin",
-		"VAULT_ADDR":               "http://vault:8200",
-		"VAULT_TOKEN":              "local",
-		"VAULT_KEY_REFERENCE":      "checkin-root",
+		"AWS_REGION":               "us-east-1",
+		"KMS_KEY_ID":               "alias/checkin-root",
 		"MEMBER_GRPC_ADDR":         "member:50051",
 		"MEMBER_GRPC_CERT":         "/tmp/member.crt",
 		"MEMBER_GRPC_KEY":          "/tmp/member.key",

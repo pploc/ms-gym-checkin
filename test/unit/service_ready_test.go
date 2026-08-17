@@ -66,17 +66,19 @@ func (p readyPlans) ValidateCheckInGym(context.Context, string) (port.Gym, error
 func (p readyPlans) Ping(context.Context) error { return p.err }
 func (p readyPlans) Close() error               { return nil }
 
-type readyVault struct{ err error }
+type readyProtector struct{ err error }
 
-func (v readyVault) KeyReference() string                            { return "key" }
-func (v readyVault) Encrypt(context.Context, []byte) (string, error) { return "", nil }
-func (v readyVault) Decrypt(context.Context, string) ([]byte, error) { return nil, nil }
-func (v readyVault) Ping(context.Context) error                      { return v.err }
+func (p readyProtector) KeyReference() string                            { return "key" }
+func (p readyProtector) Encrypt(context.Context, []byte) (string, error) { return "", nil }
+func (p readyProtector) Decrypt(context.Context, string, string) ([]byte, error) {
+	return nil, nil
+}
+func (p readyProtector) Ping(context.Context) error { return p.err }
 
 func TestGivenUnavailablePlans_WhenCheckingReadiness_ThenReturnsDependencyFailure(t *testing.T) {
 	// Given
 	dependencyErr := errors.New("plans unavailable")
-	service := usecase.NewService(readyStore{}, readyMember{}, readyPlans{err: dependencyErr}, readyVault{}, fixedClock{}, &ids{})
+	service := usecase.NewService(readyStore{}, readyMember{}, readyPlans{err: dependencyErr}, readyProtector{}, fixedClock{}, &ids{})
 
 	// When
 	err := service.Ready(context.Background())
