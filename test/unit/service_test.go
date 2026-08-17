@@ -66,14 +66,16 @@ type member struct{}
 func (member) ValidateMembership(context.Context, string, string) (port.Membership, error) {
 	return port.Membership{MemberID: "member", Valid: true, Status: "ACTIVE"}, nil
 }
-func (member) Close() error { return nil }
+func (member) Ping(context.Context) error { return nil }
+func (member) Close() error               { return nil }
 
 type plans struct{}
 
 func (plans) ValidateCheckInGym(_ context.Context, id string) (port.Gym, error) {
 	return port.Gym{ID: id, Status: "ACTIVE"}, nil
 }
-func (plans) Close() error { return nil }
+func (plans) Ping(context.Context) error { return nil }
+func (plans) Close() error               { return nil }
 
 type vault struct{}
 
@@ -89,18 +91,18 @@ func TestGivenExactReplay_WhenScanning_ThenReturnsStoredRecord(t *testing.T) {
 	service := usecase.NewService(store, member{}, plans{}, vault{}, fixedClock{now}, &ids{})
 	payload, err := domain.SignQR(gymID, 1, now, []byte("01234567890123456789012345678901"))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("sign test QR failed")
 	}
 
 	// When
 	first, err := service.Scan(context.Background(), "user", gymID, payload, "idempotency")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("scan test QR failed")
 	}
 	second, err := service.Scan(context.Background(), "user", gymID, payload, "idempotency")
 
 	// Then
 	if err != nil || first.ID != second.ID {
-		t.Fatalf("expected stored replay, got %v", err)
+		t.Fatal("expected stored replay")
 	}
 }

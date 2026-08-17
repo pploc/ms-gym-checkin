@@ -31,14 +31,20 @@ Gym IDs must be canonical lowercase UUID text. Root keys are 32 random bytes enc
 ```text
 DATABASE_URL
 VAULT_ADDR
-VAULT_TOKEN
 VAULT_KEY_REFERENCE
+VAULT_TOKEN (local development only)
+# or deployed Kubernetes workload authentication:
+VAULT_KUBERNETES_AUTH_ROLE
+VAULT_KUBERNETES_JWT_FILE
+VAULT_KUBERNETES_AUTH_MOUNT
 MEMBER_GRPC_ADDR / MEMBER_GRPC_CERT / MEMBER_GRPC_KEY / MEMBER_GRPC_CA
 PLANS_GRPC_ADDR / PLANS_GRPC_CERT / PLANS_GRPC_KEY / PLANS_GRPC_CA
 CHECKIN_GRPC_SERVER_CERT / CHECKIN_GRPC_SERVER_KEY / CHECKIN_GRPC_CLIENT_CA
 ```
 
-Optional: `GRPC_ADDR`, `HTTP_ADDR`, `VAULT_TRANSIT_MOUNT`, `KAFKA_BROKERS`, `SCHEMA_REGISTRY_URL`, `OUTBOX_RELAY_INTERVAL`, `SHUTDOWN_TIMEOUT`, `READINESS_TIMEOUT`.
+`VAULT_TOKEN` and `VAULT_KUBERNETES_AUTH_ROLE` are mutually exclusive. Deploy with a projected Vault-audience service-account JWT and `VAULT_KUBERNETES_AUTH_ROLE`; use `VAULT_TOKEN` only for local development.
+
+Optional: `GRPC_ADDR`, `HTTP_ADDR`, `VAULT_TRANSIT_MOUNT`, `VAULT_KUBERNETES_JWT_FILE`, `VAULT_KUBERNETES_AUTH_MOUNT`, `KAFKA_BROKERS`, `SCHEMA_REGISTRY_URL`, `OUTBOX_RELAY_INTERVAL`, `SHUTDOWN_TIMEOUT`, `READINESS_TIMEOUT`, `GRPC_REFLECTION`. Reflection defaults to disabled and must remain disabled outside isolated internal development.
 
 ## Local verification
 
@@ -46,15 +52,32 @@ Optional: `GRPC_ADDR`, `HTTP_ADDR`, `VAULT_TRANSIT_MOUNT`, `KAFKA_BROKERS`, `SCH
 GOWORK=off go mod download
 make test
 make build
+govulncheck ./...
 ```
 
-Start local Yugabyte and Vault:
+Start local Yugabyte, Vault Transit, Kafka, and Schema Registry:
 
 ```bash
-docker compose up -d yugabyte vault
-export DATABASE_URL='postgres://yugabyte@localhost:5434/checkin_db?sslmode=disable'
+export VAULT_DEV_ROOT_TOKEN_ID="$(openssl rand -hex 32)"
+make start-env
+export DATABASE_URL='postgres://yugabyte@127.0.0.1:5434/checkin_db?sslmode=disable'
+export VAULT_ADDR='http://127.0.0.1:8200'
+export VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"
+export KAFKA_BROKERS='127.0.0.1:9092'
+export SCHEMA_REGISTRY_URL='http://127.0.0.1:8081'
+export UNSEEDED_SCHEMA_REGISTRY_URL='http://127.0.0.1:8082'
 make migrate
 ```
+
+`make start-env` provisions local database, topic, Transit key, seeded-path Registry at `:8081`, and separate empty lookup-only proof Registry at `:8082`. It does not register schemas. For disposable local Kafka verification, seed only empty `:8081` Registry:
+
+```bash
+cd ../gym-proto
+./gradlew seedConfluentSchemas -PschemaRegistryUrl=http://127.0.0.1:8081 --no-daemon
+cd ../ms-gym-checkin
+```
+
+This controlled seed is only local registration exception. Runtime remains lookup-only. `generateConfluentFixtures` requires a clean Registry and must not run here. Stop all local state with `make stop-env`.
 
 Migrations are explicit. Application startup never mutates schema.
 

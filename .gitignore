@@ -11,3 +11,5 @@ coverage.out
 
 # Local evidence
 .evidence/
+.tmp/
+/server

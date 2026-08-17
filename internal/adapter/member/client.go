@@ -15,6 +15,7 @@ import (
 	memberv1 "github.com/pploc/proto-go/member/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 )
@@ -45,6 +46,21 @@ func (c *Client) ValidateMembership(ctx context.Context, userID, gymID string) (
 		return port.Membership{}, mapError(err, "MEMBER")
 	}
 	return port.Membership{MemberID: response.GetMemberId(), Valid: response.GetValid(), Status: membershipStatus(response.GetStatus())}, nil
+}
+func (c *Client) Ping(ctx context.Context) error {
+	c.conn.Connect()
+	for {
+		state := c.conn.GetState()
+		if state == connectivity.Ready {
+			return nil
+		}
+		if state == connectivity.Shutdown {
+			return fmt.Errorf("member connection is closed")
+		}
+		if !c.conn.WaitForStateChange(ctx, state) {
+			return ctx.Err()
+		}
+	}
 }
 func (c *Client) Close() error { return c.conn.Close() }
 func membershipStatus(value commonv1.MembershipStatus) string {

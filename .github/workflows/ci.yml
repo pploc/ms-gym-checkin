@@ -24,13 +24,70 @@ jobs:
     with:
       service_path: .
       go_version: '1.26.6'
-      coverage_min: '0'
+      coverage_min: '20'
       coverpkg: ./internal/...
     secrets: inherit
 
+  integration:
+    name: Integration tests and vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.6'
+          cache-dependency-path: go.sum
+      - uses: actions/checkout@v4
+        with:
+          repository: pploc/gym-proto
+          ref: v7.0.2
+          path: gym-proto
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '26'
+      - name: Configure private Go modules
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          export GOPRIVATE=github.com/pploc/*
+          export GIT_CONFIG_GLOBAL="$RUNNER_TEMP/gym-private-modules.gitconfig"
+          umask 077
+          cat > "$GIT_CONFIG_GLOBAL" <<EOF
+          [url "https://x-access-token:${GITHUB_TOKEN}@github.com/"]
+              insteadOf = https://github.com/
+          EOF
+          printf 'GOPRIVATE=%s\nGIT_CONFIG_GLOBAL=%s\n' "$GOPRIVATE" "$GIT_CONFIG_GLOBAL" >> "$GITHUB_ENV"
+      - name: Start dependencies
+        run: |
+          VAULT_DEV_ROOT_TOKEN_ID="$(openssl rand -hex 32)"
+          export VAULT_DEV_ROOT_TOKEN_ID
+          make start-env
+          printf 'VAULT_TOKEN=%s\n' "$VAULT_DEV_ROOT_TOKEN_ID" >> "$GITHUB_ENV"
+      - name: Seed disposable Registry fixtures
+        working-directory: gym-proto
+        run: ./gradlew seedConfluentSchemas -PschemaRegistryUrl=http://127.0.0.1:8081 --no-daemon
+      - name: Integration tests
+        env:
+          DATABASE_URL: postgres://yugabyte@127.0.0.1:5434/checkin_db?sslmode=disable
+          VAULT_ADDR: http://127.0.0.1:8200
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+          KAFKA_BROKERS: 127.0.0.1:9092
+          SCHEMA_REGISTRY_URL: http://127.0.0.1:8081
+          UNSEEDED_SCHEMA_REGISTRY_URL: http://127.0.0.1:8082
+        run: GOWORK=off go test -tags=integration -race ./test/integration/...
+      - name: Vulnerability scan
+        run: GOWORK=off go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - name: Stop dependencies and remove private Go module credentials
+        if: always()
+        run: |
+          make stop-env
+          rm -f "$RUNNER_TEMP/gym-private-modules.gitconfig"
+
   docker:
     name: Build & push image
-    needs: go-ci
+    needs: [go-ci, integration]
     if: >
       github.event_name == 'workflow_dispatch' &&
       inputs.publish_image &&

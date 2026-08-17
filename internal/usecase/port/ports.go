@@ -32,6 +32,7 @@ type Membership struct {
 
 type MemberClient interface {
 	ValidateMembership(context.Context, string, string) (Membership, error)
+	Ping(context.Context) error
 	Close() error
 }
 
@@ -42,6 +43,7 @@ type Gym struct {
 
 type PlansClient interface {
 	ValidateCheckInGym(context.Context, string) (Gym, error)
+	Ping(context.Context) error
 	Close() error
 }
 

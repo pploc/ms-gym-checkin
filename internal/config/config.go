@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
-	"strconv"
+	"strings"
 	"time"
 )
 
@@ -16,6 +16,13 @@ type MTLSClient struct {
 	Deadline   time.Duration
 }
 
+type VaultAuth struct {
+	Token             string
+	KubernetesRole    string
+	KubernetesJWTFile string
+	KubernetesMount   string
+}
+
 type Config struct {
 	GRPCAddr          string
 	HTTPAddr          string
@@ -23,7 +30,7 @@ type Config struct {
 	Member            MTLSClient
 	Plans             MTLSClient
 	VaultAddress      string
-	VaultToken        string
+	VaultAuth         VaultAuth
 	VaultTransitMount string
 	VaultKeyReference string
 	KafkaBrokers      string
@@ -35,28 +42,59 @@ type Config struct {
 	GRPCServerCert    string
 	GRPCServerKey     string
 	GRPCClientCA      string
+	GRPCReflection    bool
 }
 
 func Load() (Config, error) {
+	member, err := client("MEMBER", "ms-gym-member")
+	if err != nil {
+		return Config{}, err
+	}
+	plans, err := client("PLANS", "ms-gym-plans")
+	if err != nil {
+		return Config{}, err
+	}
+	relayInterval, err := positiveDuration("OUTBOX_RELAY_INTERVAL", 2*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	shutdownTimeout, err := positiveDuration("SHUTDOWN_TIMEOUT", 15*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	readinessTimeout, err := positiveDuration("READINESS_TIMEOUT", 2*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	reflection, err := boolean("GRPC_REFLECTION", false)
+	if err != nil {
+		return Config{}, err
+	}
 	cfg := Config{
-		GRPCAddr:          env("GRPC_ADDR", ":50051"),
-		HTTPAddr:          env("HTTP_ADDR", ":8080"),
-		DatabaseURL:       os.Getenv("DATABASE_URL"),
-		Member:            client("MEMBER", "ms-gym-member"),
-		Plans:             client("PLANS", "ms-gym-plans"),
-		VaultAddress:      os.Getenv("VAULT_ADDR"),
-		VaultToken:        os.Getenv("VAULT_TOKEN"),
+		GRPCAddr:     env("GRPC_ADDR", ":50051"),
+		HTTPAddr:     env("HTTP_ADDR", ":8080"),
+		DatabaseURL:  os.Getenv("DATABASE_URL"),
+		Member:       member,
+		Plans:        plans,
+		VaultAddress: os.Getenv("VAULT_ADDR"),
+		VaultAuth: VaultAuth{
+			Token:             os.Getenv("VAULT_TOKEN"),
+			KubernetesRole:    os.Getenv("VAULT_KUBERNETES_AUTH_ROLE"),
+			KubernetesJWTFile: env("VAULT_KUBERNETES_JWT_FILE", "/var/run/secrets/vault/token"),
+			KubernetesMount:   env("VAULT_KUBERNETES_AUTH_MOUNT", "kubernetes"),
+		},
 		VaultTransitMount: env("VAULT_TRANSIT_MOUNT", "transit"),
 		VaultKeyReference: os.Getenv("VAULT_KEY_REFERENCE"),
-		KafkaBrokers:      env("KAFKA_BROKERS", "localhost:9092"),
-		SchemaRegistryURL: env("SCHEMA_REGISTRY_URL", "http://localhost:8081"),
+		KafkaBrokers:      os.Getenv("KAFKA_BROKERS"),
+		SchemaRegistryURL: os.Getenv("SCHEMA_REGISTRY_URL"),
 		ServiceName:       env("SERVICE_NAME", "ms-gym-checkin"),
-		RelayInterval:     duration("OUTBOX_RELAY_INTERVAL", 2*time.Second),
-		ShutdownTimeout:   duration("SHUTDOWN_TIMEOUT", 15*time.Second),
-		ReadinessTimeout:  duration("READINESS_TIMEOUT", 2*time.Second),
+		RelayInterval:     relayInterval,
+		ShutdownTimeout:   shutdownTimeout,
+		ReadinessTimeout:  readinessTimeout,
 		GRPCServerCert:    os.Getenv("CHECKIN_GRPC_SERVER_CERT"),
 		GRPCServerKey:     os.Getenv("CHECKIN_GRPC_SERVER_KEY"),
 		GRPCClientCA:      os.Getenv("CHECKIN_GRPC_CLIENT_CA"),
+		GRPCReflection:    reflection,
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
@@ -64,8 +102,8 @@ func Load() (Config, error) {
 	if cfg.VaultAddress == "" || cfg.VaultKeyReference == "" {
 		return Config{}, fmt.Errorf("VAULT_ADDR and VAULT_KEY_REFERENCE are required")
 	}
-	if cfg.VaultToken == "" {
-		return Config{}, fmt.Errorf("VAULT_TOKEN is required")
+	if (cfg.VaultAuth.Token == "") == (cfg.VaultAuth.KubernetesRole == "") {
+		return Config{}, fmt.Errorf("exactly one of VAULT_TOKEN or VAULT_KUBERNETES_AUTH_ROLE is required")
 	}
 	if err := validateClient("MEMBER", cfg.Member); err != nil {
 		return Config{}, err
@@ -76,11 +114,18 @@ func Load() (Config, error) {
 	if cfg.GRPCServerCert == "" || cfg.GRPCServerKey == "" || cfg.GRPCClientCA == "" {
 		return Config{}, fmt.Errorf("CHECKIN_GRPC_SERVER_CERT, CHECKIN_GRPC_SERVER_KEY, and CHECKIN_GRPC_CLIENT_CA are required")
 	}
+	if strings.TrimSpace(cfg.KafkaBrokers) == "" || strings.TrimSpace(cfg.SchemaRegistryURL) == "" {
+		return Config{}, fmt.Errorf("KAFKA_BROKERS and SCHEMA_REGISTRY_URL are required")
+	}
 	return cfg, nil
 }
 
-func client(prefix, defaultName string) MTLSClient {
-	return MTLSClient{Address: os.Getenv(prefix + "_GRPC_ADDR"), CertFile: os.Getenv(prefix + "_GRPC_CERT"), KeyFile: os.Getenv(prefix + "_GRPC_KEY"), CAFile: os.Getenv(prefix + "_GRPC_CA"), ServerName: env(prefix+"_GRPC_SERVER_NAME", defaultName), Deadline: duration(prefix+"_GRPC_DEADLINE", 3*time.Second)}
+func client(prefix, defaultName string) (MTLSClient, error) {
+	deadline, err := positiveDuration(prefix+"_GRPC_DEADLINE", 3*time.Second)
+	if err != nil {
+		return MTLSClient{}, err
+	}
+	return MTLSClient{Address: os.Getenv(prefix + "_GRPC_ADDR"), CertFile: os.Getenv(prefix + "_GRPC_CERT"), KeyFile: os.Getenv(prefix + "_GRPC_KEY"), CAFile: os.Getenv(prefix + "_GRPC_CA"), ServerName: env(prefix+"_GRPC_SERVER_NAME", defaultName), Deadline: deadline}, nil
 }
 
 func validateClient(name string, client MTLSClient) error {
@@ -96,16 +141,30 @@ func env(key, fallback string) string {
 	}
 	return fallback
 }
-func duration(key string, fallback time.Duration) time.Duration {
+
+func positiveDuration(key string, fallback time.Duration) (time.Duration, error) {
 	value := os.Getenv(key)
 	if value == "" {
-		return fallback
+		return fallback, nil
 	}
-	if parsed, err := time.ParseDuration(value); err == nil {
-		return parsed
+	parsed, err := time.ParseDuration(value)
+	if err != nil || parsed <= 0 {
+		return 0, fmt.Errorf("%s must be a positive duration", key)
 	}
-	if seconds, err := strconv.Atoi(value); err == nil && seconds > 0 {
-		return time.Duration(seconds) * time.Second
+	return parsed, nil
+}
+
+func boolean(key string, fallback bool) (bool, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback, nil
 	}
-	return fallback
+	switch strings.ToLower(value) {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%s must be true or false", key)
+	}
 }

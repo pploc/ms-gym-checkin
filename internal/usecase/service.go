@@ -163,10 +163,16 @@ func (s *Service) Scan(ctx context.Context, userID, gymID, payload, idempotencyK
 }
 
 func (s *Service) MyHistory(ctx context.Context, userID string, page, limit int) ([]domain.CheckInRecord, int, error) {
+	if page < 0 {
+		return nil, 0, commonerrors.New(commonerrors.CategoryValidation, "INVALID_PAGE", "page is invalid")
+	}
 	return s.store.ListByUser(ctx, userID, page, paginationLimit(limit))
 }
 
 func (s *Service) MemberHistory(ctx context.Context, memberID string, page, limit int) ([]domain.CheckInRecord, int, error) {
+	if page < 0 {
+		return nil, 0, commonerrors.New(commonerrors.CategoryValidation, "INVALID_PAGE", "page is invalid")
+	}
 	return s.store.ListByMember(ctx, memberID, page, paginationLimit(limit))
 }
 
@@ -182,7 +188,13 @@ func (s *Service) Ready(ctx context.Context) error {
 	if err := s.store.Ping(ctx); err != nil {
 		return err
 	}
-	return s.vault.Ping(ctx)
+	if err := s.vault.Ping(ctx); err != nil {
+		return err
+	}
+	if err := s.member.Ping(ctx); err != nil {
+		return err
+	}
+	return s.plans.Ping(ctx)
 }
 
 func (s *Service) currentKey(ctx context.Context, gymID string) (domain.RootKey, error) {

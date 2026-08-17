@@ -1,10 +1,13 @@
-.PHONY: fmt-check vet test test-unit test-integration build migrate
+.PHONY: fmt-check vet vuln test test-unit test-integration build migrate start-env stop-env
 
 fmt-check:
 	@test -z "$$(gofmt -l .)" || (gofmt -l . && exit 1)
 
 vet:
 	GOWORK=off go vet ./...
+
+vuln:
+	GOWORK=off govulncheck ./...
 
 test-unit:
 	GOWORK=off go test -race ./...
@@ -20,3 +23,9 @@ build:
 migrate:
 	@test -n "$(DATABASE_URL)" || (echo "DATABASE_URL required" && exit 1)
 	psql "$(DATABASE_URL)" -f migrations/001_init.sql
+
+start-env:
+	./scripts/start-env.sh
+
+stop-env:
+	./scripts/stop-env.sh

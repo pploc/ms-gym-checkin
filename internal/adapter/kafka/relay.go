@@ -31,7 +31,7 @@ func (r *Relay) Run(ctx context.Context, interval time.Duration) {
 	defer ticker.Stop()
 	for {
 		if err := r.Flush(ctx); err != nil {
-			log.Printf("outbox relay flush failed: %v", err)
+			log.Print("outbox relay flush failed")
 		}
 		select {
 		case <-ctx.Done():

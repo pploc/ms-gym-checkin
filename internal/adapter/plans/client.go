@@ -14,6 +14,7 @@ import (
 	plansv1 "github.com/pploc/proto-go/plans/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 )
@@ -43,6 +44,21 @@ func (c *Client) ValidateCheckInGym(ctx context.Context, gymID string) (port.Gym
 		return port.Gym{}, mapError(err)
 	}
 	return port.Gym{ID: response.GetGymId(), Status: gymStatus(response.GetStatus())}, nil
+}
+func (c *Client) Ping(ctx context.Context) error {
+	c.conn.Connect()
+	for {
+		state := c.conn.GetState()
+		if state == connectivity.Ready {
+			return nil
+		}
+		if state == connectivity.Shutdown {
+			return fmt.Errorf("plans connection is closed")
+		}
+		if !c.conn.WaitForStateChange(ctx, state) {
+			return ctx.Err()
+		}
+	}
 }
 func (c *Client) Close() error { return c.conn.Close() }
 func gymStatus(value plansv1.GymLocationStatus) string {

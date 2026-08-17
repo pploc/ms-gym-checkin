@@ -16,7 +16,7 @@ func TestGivenCanonicalQR_WhenParsingAndVerifying_ThenAcceptsCurrentSlot(t *test
 	now := time.Date(2026, 8, 17, 10, 0, 30, 0, time.UTC)
 	payload, err := domain.SignQR(gymID, 1, now, key)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("sign test QR failed")
 	}
 
 	// When
@@ -24,7 +24,7 @@ func TestGivenCanonicalQR_WhenParsingAndVerifying_ThenAcceptsCurrentSlot(t *test
 
 	// Then
 	if err != nil || !domain.VerifyQR(parsed, key, now) {
-		t.Fatalf("expected valid QR: %v", err)
+		t.Fatal("expected valid QR")
 	}
 }
 
@@ -47,11 +47,11 @@ func TestGivenSignedQRFromOldSlot_WhenVerifying_ThenRejects(t *testing.T) {
 	now := time.Date(2026, 8, 17, 10, 5, 0, 0, time.UTC)
 	payload, err := domain.SignQR(gymID, 1, now.Add(-2*time.Minute), key)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("sign expired test QR failed")
 	}
 	parsed, err := domain.ParseSignedQR(payload)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("parse expired test QR failed")
 	}
 
 	// When
