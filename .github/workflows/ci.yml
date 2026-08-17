@@ -24,7 +24,8 @@ jobs:
     with:
       service_path: .
       go_version: '1.26.6'
-      test_command: GOWORK=off go test -race ./...
+      coverage_min: '0'
+      coverpkg: ./internal/...
     secrets: inherit
 
   docker:
