@@ -246,6 +246,52 @@ func TestGivenStalePublishingOutbox_WhenClaimRuns_ThenEventIsRecovered(t *testin
 	}
 }
 
+func TestGivenClaimedOutbox_WhenRetryAndFailureTransitionsRun_ThenAttemptsAndTerminalStatePersist(t *testing.T) {
+	// Given
+	store, _ := openYugabyte(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	_, err := store.CreateCheckIn(ctx, checkInRecord("record", now), "fingerprint", "key", outboxEvent("event", now))
+	if err != nil {
+		t.Fatal("create check-in for outbox transitions failed")
+	}
+	if _, err := store.ClaimOutbox(ctx, 1, now); err != nil {
+		t.Fatal("claim pending outbox event failed")
+	}
+	preparedValue := []byte{0, 1, 2}
+	preparedHeaders := []byte(`[{"Key":"event-id","Value":"ZXZlbnQ="}]`)
+	if err := store.SavePreparedOutbox(ctx, "event", preparedValue, preparedHeaders); err != nil {
+		t.Fatal("save prepared outbox record failed")
+	}
+	availableAt := now.Add(2 * time.Second)
+
+	// When
+	if err := store.MarkRetry(ctx, "event", 1, availableAt); err != nil {
+		t.Fatal("mark outbox retry failed")
+	}
+	events, err := store.ClaimOutbox(ctx, 1, availableAt)
+	if err != nil || len(events) != 1 || events[0].Attempts != 1 {
+		t.Fatal("retry attempts were not persisted")
+	}
+	if err := store.MarkFailed(ctx, "event", 3); err != nil {
+		t.Fatal("mark terminal outbox failure failed")
+	}
+
+	// Then
+	var status string
+	var attempts int
+	if err := store.DB().QueryRow(`SELECT status, attempts FROM outbox_events WHERE event_id='event'`).Scan(&status, &attempts); err != nil {
+		t.Fatal("query terminal outbox state failed")
+	}
+	if status != "FAILED" || attempts != 3 {
+		t.Fatalf("status=%s attempts=%d", status, attempts)
+	}
+	events, err = store.ClaimOutbox(ctx, 1, availableAt.Add(2*time.Minute))
+	if err != nil || len(events) != 0 {
+		t.Fatal("terminal outbox event remained claimable")
+	}
+}
+
 func openYugabyte(t *testing.T) (*yugabyte.Store, string) {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")

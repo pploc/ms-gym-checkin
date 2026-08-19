@@ -1,8 +1,8 @@
 CREATE TABLE IF NOT EXISTS gym_qr_root_keys (
     gym_id TEXT NOT NULL,
     key_version BIGINT NOT NULL CHECK (key_version > 0),
-    vault_ciphertext TEXT NOT NULL,
-    vault_key_reference TEXT NOT NULL,
+    key_ciphertext TEXT NOT NULL,
+    key_reference TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('CURRENT', 'PREVIOUS', 'RETIRED')),
     activated_at TIMESTAMPTZ NOT NULL,
     acceptance_deadline TIMESTAMPTZ,
@@ -37,12 +37,15 @@ CREATE TABLE IF NOT EXISTS outbox_events (
     topic TEXT NOT NULL,
     message_key TEXT NOT NULL,
     payload BYTEA NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('PENDING', 'PUBLISHING', 'PUBLISHED', 'FAILED')),
+    prepared_value BYTEA,
+    prepared_headers BYTEA,
+    status TEXT NOT NULL CHECK (status IN ('PENDING', 'PUBLISHING', 'PUBLISHED', 'FAILED', 'INVALID')),
     attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
     created_at TIMESTAMPTZ NOT NULL,
     available_at TIMESTAMPTZ NOT NULL,
     claimed_at TIMESTAMPTZ,
-    published_at TIMESTAMPTZ
+    published_at TIMESTAMPTZ,
+    CHECK ((prepared_value IS NULL) = (prepared_headers IS NULL))
 );
 
 CREATE INDEX IF NOT EXISTS outbox_events_claimable ON outbox_events (status, available_at, created_at);

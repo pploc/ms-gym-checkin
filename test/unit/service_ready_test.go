@@ -45,10 +45,15 @@ func (s readyStore) RotateKey(context.Context, domain.RootKey, time.Time, bool) 
 func (s readyStore) ClaimOutbox(context.Context, int, time.Time) ([]domain.OutboxEvent, error) {
 	return nil, nil
 }
-func (s readyStore) MarkPublished(context.Context, string, time.Time) error { return nil }
-func (s readyStore) MarkRetry(context.Context, string, time.Time) error     { return nil }
-func (s readyStore) Ping(context.Context) error                             { return s.err }
-func (s readyStore) Close() error                                           { return nil }
+func (s readyStore) SavePreparedOutbox(context.Context, string, []byte, []byte) error {
+	return nil
+}
+func (s readyStore) MarkPublished(context.Context, string, time.Time) error  { return nil }
+func (s readyStore) MarkRetry(context.Context, string, int, time.Time) error { return nil }
+func (s readyStore) MarkFailed(context.Context, string, int) error           { return nil }
+func (s readyStore) MarkInvalid(context.Context, string, int) error          { return nil }
+func (s readyStore) Ping(context.Context) error                              { return s.err }
+func (s readyStore) Close() error                                            { return nil }
 
 type readyMember struct{ err error }
 

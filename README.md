@@ -1,6 +1,6 @@
 # ms-gym-checkin
 
-Check-in owns encrypted per-gym QR root keys, signed display payloads, idempotent check-in records, and `checkin.recorded.v1` outbox publication.
+Check-in owns encrypted per-gym QR root keys, signed display payloads, idempotent check-in records, and `checkin.recorded.v1` outbox publication. Relay sends an acknowledged raw record, retries after `OUTBOX_RETRY_DELAY`, and after three failed primary publications sends the same key, Confluent frame, and canonical headers to `checkin.recorded.v1.DLQ`; source state becomes `FAILED` only after acknowledged DLQ publication.
 
 ## Scope
 
@@ -13,7 +13,7 @@ Check-in owns encrypted per-gym QR root keys, signed display payloads, idempoten
 ## Immutable dependencies
 
 - `github.com/pploc/proto-go v1.7.1`
-- `github.com/pploc/common-go v0.5.0-rc.1`
+- `github.com/pploc/common-go v0.5.0`
 
 Use `GOWORK=off`. Do not add `replace` directives, sibling checkout dependencies, or mutable branch references.
 
@@ -41,7 +41,7 @@ SCHEMA_REGISTRY_URL
 
 Production uses AWS SDK default credentials through EKS workload identity. Grant only `kms:Encrypt`, `kms:Decrypt`, and `kms:DescribeKey` on Check-in's CMK. Do not configure static AWS credentials. `KMS_KEY_ID` may be an alias or ARN; stored rows retain KMS's resolved key ARN.
 
-Optional: `GRPC_ADDR`, `HTTP_ADDR`, `KMS_ENDPOINT_URL` (LocalStack only), `KAFKA_BROKERS`, `SCHEMA_REGISTRY_URL`, `OUTBOX_RELAY_INTERVAL`, `SHUTDOWN_TIMEOUT`, `READINESS_TIMEOUT`, `GRPC_REFLECTION`. Reflection defaults to disabled and must remain disabled outside isolated internal development.
+Optional: `GRPC_ADDR`, `HTTP_ADDR`, `KMS_ENDPOINT_URL` (LocalStack only), `OUTBOX_RELAY_INTERVAL`, `OUTBOX_RETRY_DELAY`, `SHUTDOWN_TIMEOUT`, `READINESS_TIMEOUT`, `GRPC_REFLECTION`. Reflection defaults to disabled and must remain disabled outside isolated internal development.
 
 ## Local verification
 
@@ -78,7 +78,7 @@ cd ../ms-gym-checkin
 
 This controlled seed is only local registration exception. Runtime remains lookup-only. `generateConfluentFixtures` requires a clean Registry and must not run here. Stop all local state with `make stop-env`.
 
-Migrations are explicit. Application startup never mutates schema. `002_kms_cutover.sql` refuses a non-empty legacy root-key table because KMS cannot decrypt prior Transit ciphertext. Production deployment requires the table to be empty before the KMS-only cutover.
+Migrations are explicit. Application startup never mutates schema. G10 has no durable pre-release root-key data, so the initial migration uses KMS-only `key_ciphertext` and `key_reference` columns directly.
 
 Integration checks require live Yugabyte, LocalStack KMS, Kafka, and Schema Registry:
 

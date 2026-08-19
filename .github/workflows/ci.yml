@@ -24,7 +24,7 @@ jobs:
     with:
       service_path: .
       go_version: '1.26.6'
-      coverage_min: '20'
+      coverage_min: '30'
       coverpkg: ./internal/...
     secrets: inherit
 
@@ -62,6 +62,8 @@ jobs:
               insteadOf = https://github.com/
           EOF
           printf 'GOPRIVATE=%s\nGIT_CONFIG_GLOBAL=%s\n' "$GOPRIVATE" "$GIT_CONFIG_GLOBAL" >> "$GITHUB_ENV"
+      - name: Verify modules
+        run: GOWORK=off go mod verify
       - name: Start dependencies
         run: make start-env
       - name: Apply migrations
@@ -88,16 +90,29 @@ jobs:
           UNSEEDED_SCHEMA_REGISTRY_URL: http://127.0.0.1:8082
         run: GOWORK=off go test -tags=integration -race ./test/integration/...
       - name: Vulnerability scan
-        run: GOWORK=off go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: GOWORK=off go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
       - name: Stop dependencies and remove private Go module credentials
         if: always()
         run: |
           make stop-env
           rm -f "$RUNNER_TEMP/gym-private-modules.gitconfig"
 
-  docker:
-    name: Build & push image
+  docker-check:
+    name: Build image
     needs: [go-ci, integration]
+    uses: pploc/gym-infra/.github/workflows/docker-build.yml@ace7a285cc14b3e1121cac17bcfa9ea0ce5d1102
+    with:
+      service_name: ms-gym-checkin
+      context: .
+      push: false
+      source_sha_only: true
+    permissions:
+      contents: read
+      packages: read
+
+  docker-publish:
+    name: Publish image
+    needs: [docker-check]
     if: >
       github.event_name == 'workflow_dispatch' &&
       inputs.publish_image &&

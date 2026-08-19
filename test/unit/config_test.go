@@ -2,6 +2,7 @@ package unit
 
 import (
 	"testing"
+	"time"
 
 	"github.com/pploc/ms-gym-checkin/internal/config"
 )
@@ -51,6 +52,9 @@ func TestGivenKMSConfiguration_WhenLoadingConfig_ThenLoadsEndpointAndKeepsReflec
 	}
 	if cfg.GRPCReflection {
 		t.Fatal("gRPC reflection must default to disabled")
+	}
+	if cfg.OutboxRetryDelay != 2*time.Second {
+		t.Fatal("outbox retry delay did not use frozen default")
 	}
 }
 

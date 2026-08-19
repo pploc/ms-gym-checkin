@@ -29,6 +29,7 @@ type Config struct {
 	SchemaRegistryURL string
 	ServiceName       string
 	RelayInterval     time.Duration
+	OutboxRetryDelay  time.Duration
 	ShutdownTimeout   time.Duration
 	ReadinessTimeout  time.Duration
 	GRPCServerCert    string
@@ -47,6 +48,10 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	relayInterval, err := positiveDuration("OUTBOX_RELAY_INTERVAL", 2*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	outboxRetryDelay, err := positiveDuration("OUTBOX_RETRY_DELAY", 2*time.Second)
 	if err != nil {
 		return Config{}, err
 	}
@@ -75,6 +80,7 @@ func Load() (Config, error) {
 		SchemaRegistryURL: os.Getenv("SCHEMA_REGISTRY_URL"),
 		ServiceName:       env("SERVICE_NAME", "ms-gym-checkin"),
 		RelayInterval:     relayInterval,
+		OutboxRetryDelay:  outboxRetryDelay,
 		ShutdownTimeout:   shutdownTimeout,
 		ReadinessTimeout:  readinessTimeout,
 		GRPCServerCert:    os.Getenv("CHECKIN_GRPC_SERVER_CERT"),

@@ -18,8 +18,11 @@ type Store interface {
 	CreateCurrentKey(context.Context, domain.RootKey) (domain.RootKey, error)
 	RotateKey(context.Context, domain.RootKey, time.Time, bool) (domain.RootKey, error)
 	ClaimOutbox(context.Context, int, time.Time) ([]domain.OutboxEvent, error)
+	SavePreparedOutbox(context.Context, string, []byte, []byte) error
 	MarkPublished(context.Context, string, time.Time) error
-	MarkRetry(context.Context, string, time.Time) error
+	MarkRetry(context.Context, string, int, time.Time) error
+	MarkFailed(context.Context, string, int) error
+	MarkInvalid(context.Context, string, int) error
 	Ping(context.Context) error
 	Close() error
 }

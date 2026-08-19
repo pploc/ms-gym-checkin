@@ -237,11 +237,11 @@ func (s *Service) key(ctx context.Context, key domain.RootKey) ([]byte, error) {
 	}
 	plain, err := s.protector.Decrypt(ctx, key.KeyReference, key.Ciphertext)
 	if err != nil {
-		return nil, commonerrors.New(commonerrors.CategoryUnavailable, "VAULT_UNAVAILABLE", "key service is unavailable")
+		return nil, commonerrors.New(commonerrors.CategoryUnavailable, "KMS_UNAVAILABLE", "key service is unavailable")
 	}
 	defer clear(plain)
 	if len(plain) != 32 {
-		return nil, commonerrors.New(commonerrors.CategoryUnavailable, "VAULT_UNAVAILABLE", "key service is unavailable")
+		return nil, commonerrors.New(commonerrors.CategoryUnavailable, "KMS_UNAVAILABLE", "key service is unavailable")
 	}
 	expires := key.AcceptanceDeadline
 	if key.Status == domain.RootKeyCurrent || expires.IsZero() {

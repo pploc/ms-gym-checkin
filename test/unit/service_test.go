@@ -56,10 +56,15 @@ func (s *memoryStore) RotateKey(_ context.Context, key domain.RootKey, _ time.Ti
 func (s *memoryStore) ClaimOutbox(context.Context, int, time.Time) ([]domain.OutboxEvent, error) {
 	return nil, nil
 }
-func (s *memoryStore) MarkPublished(context.Context, string, time.Time) error { return nil }
-func (s *memoryStore) MarkRetry(context.Context, string, time.Time) error     { return nil }
-func (s *memoryStore) Ping(context.Context) error                             { return nil }
-func (s *memoryStore) Close() error                                           { return nil }
+func (s *memoryStore) SavePreparedOutbox(context.Context, string, []byte, []byte) error {
+	return nil
+}
+func (s *memoryStore) MarkPublished(context.Context, string, time.Time) error  { return nil }
+func (s *memoryStore) MarkRetry(context.Context, string, int, time.Time) error { return nil }
+func (s *memoryStore) MarkFailed(context.Context, string, int) error           { return nil }
+func (s *memoryStore) MarkInvalid(context.Context, string, int) error          { return nil }
+func (s *memoryStore) Ping(context.Context) error                              { return nil }
+func (s *memoryStore) Close() error                                            { return nil }
 
 type member struct{}
 

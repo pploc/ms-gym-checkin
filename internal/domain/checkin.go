@@ -42,10 +42,12 @@ func (k RootKey) IsAcceptableAt(now time.Time) bool {
 }
 
 type OutboxEvent struct {
-	ID        string
-	Topic     string
-	Key       string
-	Payload   []byte
-	Attempts  int
-	CreatedAt time.Time
+	ID              string
+	Topic           string
+	Key             string
+	Payload         []byte
+	PreparedValue   []byte
+	PreparedHeaders []byte
+	Attempts        int
+	CreatedAt       time.Time
 }

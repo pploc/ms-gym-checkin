@@ -257,7 +257,7 @@ func (s *Store) ClaimOutbox(ctx context.Context, limit int, now time.Time) ([]do
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	rows, err := tx.QueryContext(ctx, `WITH claimed AS (SELECT event_id FROM outbox_events WHERE (status = 'PENDING' AND available_at <= $1) OR (status = 'PUBLISHING' AND claimed_at < $3) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT $2) UPDATE outbox_events o SET status='PUBLISHING', claimed_at=$1 FROM claimed WHERE o.event_id=claimed.event_id RETURNING o.event_id,o.topic,o.message_key,o.payload,o.attempts,o.created_at`, now, limit, now.Add(-time.Minute))
+	rows, err := tx.QueryContext(ctx, `WITH claimed AS (SELECT event_id FROM outbox_events WHERE (status = 'PENDING' AND available_at <= $1) OR (status = 'PUBLISHING' AND claimed_at < $3) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT $2) UPDATE outbox_events o SET status='PUBLISHING', claimed_at=$1 FROM claimed WHERE o.event_id=claimed.event_id RETURNING o.event_id,o.topic,o.message_key,o.payload,o.prepared_value,o.prepared_headers,o.attempts,o.created_at`, now, limit, now.Add(-time.Minute))
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +265,7 @@ func (s *Store) ClaimOutbox(ctx context.Context, limit int, now time.Time) ([]do
 	var events []domain.OutboxEvent
 	for rows.Next() {
 		var event domain.OutboxEvent
-		if err := rows.Scan(&event.ID, &event.Topic, &event.Key, &event.Payload, &event.Attempts, &event.CreatedAt); err != nil {
+		if err := rows.Scan(&event.ID, &event.Topic, &event.Key, &event.Payload, &event.PreparedValue, &event.PreparedHeaders, &event.Attempts, &event.CreatedAt); err != nil {
 			return nil, err
 		}
 		events = append(events, event)
@@ -277,6 +277,20 @@ func (s *Store) ClaimOutbox(ctx context.Context, limit int, now time.Time) ([]do
 		return nil, err
 	}
 	return events, nil
+}
+func (s *Store) SavePreparedOutbox(ctx context.Context, id string, value, headers []byte) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE outbox_events SET prepared_value=$2,prepared_headers=$3 WHERE event_id=$1 AND status='PUBLISHING' AND prepared_value IS NULL AND prepared_headers IS NULL`, id, value, headers)
+	if err != nil {
+		return err
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		return errors.New("outbox event is not claimed or is already prepared")
+	}
+	return nil
 }
 func (s *Store) MarkPublished(ctx context.Context, id string, now time.Time) error {
 	result, err := s.db.ExecContext(ctx, `UPDATE outbox_events SET status='PUBLISHED',published_at=$2 WHERE event_id=$1 AND status='PUBLISHING'`, id, now)
@@ -292,8 +306,28 @@ func (s *Store) MarkPublished(ctx context.Context, id string, now time.Time) err
 	}
 	return nil
 }
-func (s *Store) MarkRetry(ctx context.Context, id string, now time.Time) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE outbox_events SET status='PENDING',attempts=attempts+1,available_at=$2,claimed_at=NULL WHERE event_id=$1 AND status='PUBLISHING'`, id, now.Add(time.Second))
+func (s *Store) MarkRetry(ctx context.Context, id string, attempts int, availableAt time.Time) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE outbox_events SET status='PENDING',attempts=$2,available_at=$3,claimed_at=NULL WHERE event_id=$1 AND status='PUBLISHING'`, id, attempts, availableAt)
+	if err != nil {
+		return err
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		return errors.New("outbox event is not claimed")
+	}
+	return nil
+}
+func (s *Store) MarkFailed(ctx context.Context, id string, attempts int) error {
+	return s.markTerminal(ctx, id, attempts, "FAILED")
+}
+func (s *Store) MarkInvalid(ctx context.Context, id string, attempts int) error {
+	return s.markTerminal(ctx, id, attempts, "INVALID")
+}
+func (s *Store) markTerminal(ctx context.Context, id string, attempts int, status string) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE outbox_events SET status=$3,attempts=$2,claimed_at=NULL WHERE event_id=$1 AND status='PUBLISHING'`, id, attempts, status)
 	if err != nil {
 		return err
 	}

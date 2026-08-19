@@ -51,7 +51,12 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("yugabyte: %w", err)
 	}
-	defer store.Close()
+	relayStopped := true
+	defer func() {
+		if relayStopped {
+			_ = store.Close()
+		}
+	}()
 	member, err := memberadapter.New(cfg.Member)
 	if err != nil {
 		return fmt.Errorf("member client: %w", err)
@@ -97,7 +102,12 @@ func run() error {
 	defer listener.Close()
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-	go runOutboxRelay(ctx, cfg, store)
+	relayDone := make(chan struct{})
+	relayStopped = false
+	go func() {
+		defer close(relayDone)
+		runOutboxRelay(ctx, cfg, store)
+	}()
 	httpServer := &http.Server{Addr: cfg.HTTPAddr, Handler: healthHandler(service, cfg.ReadinessTimeout), ReadHeaderTimeout: 5 * time.Second}
 	serveErr := make(chan error, 2)
 	go func() {
@@ -128,7 +138,21 @@ func run() error {
 	case <-shutdownCtx.Done():
 		grpcServer.Stop()
 	}
+	if err := waitForRelay(shutdownCtx, relayDone); err != nil {
+		serveFailure = errors.Join(serveFailure, fmt.Errorf("shutdown outbox relay: %w", err))
+	} else {
+		relayStopped = true
+	}
 	return serveFailure
+}
+
+func waitForRelay(ctx context.Context, done <-chan struct{}) error {
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func healthHandler(service *usecase.Service, timeout time.Duration) http.Handler {
@@ -160,17 +184,17 @@ func serverCredentials(cfg config.Config) (credentials.TransportCredentials, err
 	}
 	return credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cert}, ClientCAs: pool, ClientAuth: tls.RequireAndVerifyClientCert, VerifyPeerCertificate: grpcadapter.VerifyGeneratedGateway, MinVersion: tls.VersionTLS12}), nil
 }
-func newProducer(cfg config.Config) (*commonkafka.FranzProducer, func() error, error) {
+func newProducer(cfg config.Config) (*commonkafka.ConfluentProtobufRegistry, *commonkafka.FranzProducer, func() error, error) {
 	registry, err := commonkafka.NewConfluentProtobufRegistry(commonkafka.RegistryConfig{URL: cfg.SchemaRegistryURL})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	producer, err := commonkafka.NewFranzProducer(commonkafka.TransportConfig{Brokers: strings.Split(cfg.KafkaBrokers, ","), PublishTimeout: 5 * time.Second}, registry)
 	if err != nil {
 		_ = registry.Close()
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return producer, func() error {
+	return registry, producer, func() error {
 		producer.Close()
 		return registry.Close()
 	}, nil
@@ -180,16 +204,20 @@ func runOutboxRelay(ctx context.Context, cfg config.Config, store *yugabyteadapt
 		if ctx.Err() != nil {
 			return
 		}
-		producer, closeProducer, err := newProducer(cfg)
+		registry, producer, closeProducer, err := newProducer(cfg)
 		if err != nil {
+			retry := time.NewTimer(time.Second)
 			select {
 			case <-ctx.Done():
+				if !retry.Stop() {
+					<-retry.C
+				}
 				return
-			case <-time.After(time.Second):
+			case <-retry.C:
 				continue
 			}
 		}
-		relay := kafkaadapter.NewRelay(store, producer, cfg.ServiceName)
+		relay := kafkaadapter.NewRelay(store, registry, producer, cfg.ServiceName, cfg.OutboxRetryDelay)
 		relay.Run(ctx, cfg.RelayInterval)
 		_ = closeProducer()
 	}

@@ -119,6 +119,32 @@ func TestGivenMissingKMSResponseData_WhenUsingProtector_ThenReturnsError(t *test
 	}
 }
 
+func TestGivenPersistedDifferentKMSReference_WhenDecrypting_ThenFailsBeforeCallingKMS(t *testing.T) {
+	// Given
+	called := false
+	client := fakeClient{
+		describe: func(*awskms.DescribeKeyInput) (*awskms.DescribeKeyOutput, error) {
+			return enabledSymmetricKey("arn:aws:kms:us-east-1:123456789012:key/configured"), nil
+		},
+		decrypt: func(*awskms.DecryptInput) (*awskms.DecryptOutput, error) {
+			called = true
+			return &awskms.DecryptOutput{Plaintext: []byte("key")}, nil
+		},
+	}
+	protector, err := newProtector(context.Background(), client, "alias/checkin-root")
+	if err != nil {
+		t.Fatal("create KMS protector failed")
+	}
+
+	// When
+	_, err = protector.Decrypt(context.Background(), "arn:aws:kms:us-east-1:999999999999:key/other", base64.StdEncoding.EncodeToString([]byte("ciphertext")))
+
+	// Then
+	if err == nil || called {
+		t.Fatal("persisted mismatched KMS reference was not rejected before decrypt")
+	}
+}
+
 func TestGivenMalformedCiphertextOrKMSFailure_WhenDecrypting_ThenReturnsError(t *testing.T) {
 	// Given
 	providerErr := errors.New("KMS unavailable")

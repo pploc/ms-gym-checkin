@@ -63,6 +63,9 @@ func (p *Protector) Encrypt(ctx context.Context, plaintext []byte) (string, erro
 }
 
 func (p *Protector) Decrypt(ctx context.Context, keyReference, ciphertext string) ([]byte, error) {
+	if keyReference != p.keyReference {
+		return nil, fmt.Errorf("KMS key reference does not match configured key")
+	}
 	blob, err := base64.StdEncoding.DecodeString(ciphertext)
 	if err != nil {
 		return nil, fmt.Errorf("decode KMS ciphertext: %w", err)
