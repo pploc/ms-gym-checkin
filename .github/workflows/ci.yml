@@ -100,7 +100,7 @@ jobs:
   docker-check:
     name: Build image
     needs: [go-ci, integration]
-    uses: pploc/gym-infra/.github/workflows/docker-build.yml@ace7a285cc14b3e1121cac17bcfa9ea0ce5d1102
+    uses: pploc/gym-infra/.github/workflows/docker-build.yml@79dc36fb29857730eb05ff27f4ee9fa33dfd253b
     with:
       service_name: ms-gym-checkin
       context: .
@@ -117,7 +117,7 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       inputs.publish_image &&
       github.ref == 'refs/heads/develop'
-    uses: pploc/gym-infra/.github/workflows/docker-build.yml@ace7a285cc14b3e1121cac17bcfa9ea0ce5d1102
+    uses: pploc/gym-infra/.github/workflows/docker-build.yml@79dc36fb29857730eb05ff27f4ee9fa33dfd253b
     with:
       service_name: ms-gym-checkin
       context: .
