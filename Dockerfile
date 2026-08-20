@@ -8,7 +8,7 @@ RUN --mount=type=secret,id=github_token,required=true \
 COPY . .
 RUN GOWORK=off go build -trimpath -ldflags='-s -w' -o /out/server ./cmd/server
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/base-debian12:nonroot
 COPY --from=build /out/server /server
 USER nonroot:nonroot
 EXPOSE 50051 8080
